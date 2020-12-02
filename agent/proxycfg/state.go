@@ -853,6 +853,8 @@ func (s *state) resetWatchesFromChain(
 			"chain", chain.ServiceName,
 			"target", target.ID,
 			"mesh-gateway-mode", target.MeshGateway.Mode,
+			"target-service", target.Service,
+			"target-filter", target.Subset.Filter,
 		)
 
 		// We'll get endpoints from the gateway query, but the health still has
