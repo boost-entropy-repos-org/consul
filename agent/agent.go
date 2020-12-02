@@ -367,6 +367,7 @@ func New(bd BaseDeps) (*Agent, error) {
 		Cache:     bd.Cache,
 		NetRPC:    &a,
 		CacheName: cacheName,
+		Logger:    bd.Logger.Named("rpcclient.health"),
 	}
 
 	a.serviceManager = NewServiceManager(&a)

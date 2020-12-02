@@ -227,17 +227,17 @@ func (s *state) watchMeshGateway(ctx context.Context, dc string, upstreamID stri
 	}, "mesh-gateway:"+dc+":"+upstreamID, s.ch)
 }
 
-func (s *state) watchConnectProxyService(ctx context.Context, correlationId string, service string, dc string, filter string, entMeta *structs.EnterpriseMeta) error {
+func (s *state) watchConnectProxyService(ctx context.Context, correlationId string, target *structs.DiscoveryTarget) error {
 	var finalMeta structs.EnterpriseMeta
-	finalMeta.Merge(entMeta)
+	finalMeta.Merge(target.GetEnterpriseMetadata())
 
 	return s.cache.Notify(ctx, s.serviceHealthCacheName, &structs.ServiceSpecificRequest{
-		Datacenter: dc,
+		Datacenter: target.Datacenter,
 		QueryOptions: structs.QueryOptions{
 			Token:  s.token,
-			Filter: filter,
+			Filter: target.Subset.Filter,
 		},
-		ServiceName: service,
+		ServiceName: target.Service,
 		Connect:     true,
 		// Note that Identifier doesn't type-prefix for service any more as it's
 		// the default and makes metrics and other things much cleaner. It's
@@ -865,14 +865,7 @@ func (s *state) resetWatchesFromChain(
 		}
 
 		ctx, cancel := context.WithCancel(s.ctx)
-		err := s.watchConnectProxyService(
-			ctx,
-			"upstream-target:"+target.ID+":"+id,
-			target.Service,
-			target.Datacenter,
-			target.Subset.Filter,
-			target.GetEnterpriseMetadata(),
-		)
+		err := s.watchConnectProxyService(ctx, "upstream-target:"+target.ID+":"+id, target)
 		if err != nil {
 			cancel()
 			return err
