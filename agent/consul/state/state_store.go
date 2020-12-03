@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	memdb "github.com/hashicorp/go-memdb"
 
 	"github.com/hashicorp/consul/agent/consul/stream"
@@ -178,12 +179,13 @@ func NewStateStore(gc *TombstoneGC) *Store {
 	return s
 }
 
-func NewStateStoreWithEventPublisher(gc *TombstoneGC) *Store {
+func NewStateStoreWithEventPublisher(gc *TombstoneGC, logger hclog.Logger) *Store {
 	store := NewStateStore(gc)
 	ctx, cancel := context.WithCancel(context.TODO())
 	store.stopEventPublisher = cancel
 
 	pub := stream.NewEventPublisher(newSnapshotHandlers((*readDB)(store.db.db)), 10*time.Second)
+	pub.Logger = logger.Named("stream.event-publisher")
 	store.db.publisher = pub
 
 	go pub.Run(ctx)

@@ -620,7 +620,7 @@ func newFSMFromConfig(logger hclog.Logger, gc *state.TombstoneGC, config *Config
 	deps := fsm.Deps{Logger: logger}
 	if config.RPCConfig.EnableStreaming {
 		deps.NewStateStore = func() *state.Store {
-			return state.NewStateStoreWithEventPublisher(gc)
+			return state.NewStateStoreWithEventPublisher(gc, logger)
 		}
 		return fsm.NewFromDeps(deps)
 	}

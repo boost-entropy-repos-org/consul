@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 )
 
 // EventPublisher receives change events from Publish, and sends the events to
@@ -39,6 +41,8 @@ type EventPublisher struct {
 	publishCh chan []Event
 
 	snapshotHandlers SnapshotHandlers
+
+	Logger hclog.Logger
 }
 
 type subscriptions struct {
@@ -129,6 +133,7 @@ func (e *EventPublisher) publishEvent(events []Event) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	for topic, events := range eventsByTopic {
+		e.Logger.Trace("publishing events", "topic", topic, "count", len(events))
 		e.getTopicBuffer(topic).Append(events)
 	}
 }
@@ -167,6 +172,7 @@ func (e *EventPublisher) Subscribe(req *SubscribeRequest) (*Subscription, error)
 
 	// If the client view is fresh, resume the stream.
 	if req.Index > 0 && topicHead.HasEventIndex(req.Index) {
+		e.Logger.Trace("resuming stream", "topic", req.Topic, "key", req.Key)
 		buf := newEventBuffer()
 		subscriptionHead := buf.Head()
 		// splice the rest of the topic buffer onto the subscription buffer so
@@ -177,6 +183,7 @@ func (e *EventPublisher) Subscribe(req *SubscribeRequest) (*Subscription, error)
 
 	snapFromCache := e.getCachedSnapshotLocked(req)
 	if req.Index == 0 && snapFromCache != nil {
+		e.Logger.Trace("using snapshot", "topic", req.Topic, "key", req.Key)
 		return e.subscriptions.add(req, snapFromCache.First), nil
 	}
 	snap := newEventSnapshot()
@@ -190,11 +197,13 @@ func (e *EventPublisher) Subscribe(req *SubscribeRequest) (*Subscription, error)
 		}})
 
 		if snapFromCache != nil {
+			e.Logger.Trace("newSnapshotToFollow with snapshot", "topic", req.Topic, "key", req.Key)
 			snap.buffer.AppendItem(snapFromCache.First)
 			return e.subscriptions.add(req, snap.First), nil
 		}
 	}
 
+	e.Logger.Trace("no snapshot", "topic", req.Topic, "key", req.Key)
 	snap.appendAndSplice(*req, handler, topicHead)
 	e.setCachedSnapshotLocked(req, snap)
 	return e.subscriptions.add(req, snap.First), nil
@@ -268,8 +277,10 @@ func (e *EventPublisher) getCachedSnapshotLocked(req *SubscribeRequest) *eventSn
 		e.snapCache[req.Topic] = topicSnaps
 	}
 
-	snap, ok := topicSnaps[snapCacheKey(req)]
+	key := snapCacheKey(req)
+	snap, ok := topicSnaps[key]
 	if ok && snap.err() == nil {
+		e.Logger.Trace("re-using snapshot", "topic", req.Topic, "key", key)
 		return snap
 	}
 	return nil
@@ -280,13 +291,16 @@ func (e *EventPublisher) setCachedSnapshotLocked(req *SubscribeRequest, snap *ev
 	if e.snapCacheTTL == 0 {
 		return
 	}
-	e.snapCache[req.Topic][snapCacheKey(req)] = snap
+	key := snapCacheKey(req)
+	e.Logger.Trace("saving snapshot", "topic", req.Topic, "key", key)
+	e.snapCache[req.Topic][key] = snap
 
 	// Setup a cache eviction
 	time.AfterFunc(e.snapCacheTTL, func() {
 		e.lock.Lock()
 		defer e.lock.Unlock()
-		delete(e.snapCache[req.Topic], snapCacheKey(req))
+		e.Logger.Trace("removing snapshot", "topic", req.Topic, "key", key)
+		delete(e.snapCache[req.Topic], key)
 	})
 }
 
